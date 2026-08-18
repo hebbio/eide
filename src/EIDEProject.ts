@@ -4622,7 +4622,18 @@ class EIDEProject extends AbstractProject {
     provideFolderBrowseConfiguration(uri: vscode.Uri, token?: vscode.CancellationToken | undefined): Thenable<WorkspaceBrowseConfiguration | null> {
         return new Promise((resolve) => {
             const prjRoot = this.GetRootDir().path;
-            if (platform.realpathSync(prjRoot) == platform.realpathSync(uri.fsPath)) {
+            const projectRoot = platform.realpathSync(prjRoot);
+            const workspaceRoot = platform.realpathSync(uri.fsPath);
+            const relativeProjectRoot = NodePath.relative(workspaceRoot, projectRoot);
+            const workspaceContainsProject =
+                relativeProjectRoot === '' ||
+                (!relativeProjectRoot.startsWith('..' + NodePath.sep) &&
+                    relativeProjectRoot !== '..' &&
+                    !NodePath.isAbsolute(relativeProjectRoot));
+
+            // A workspace may contain the EIDE project as a child folder. In that
+            // layout cpptools still needs the project's browse configuration.
+            if (workspaceContainsProject) {
                 resolve({
                     browsePath: this.cppToolsConfig.browse?.path || [],
                     compilerPath: this.cppToolsConfig.compilerPath,

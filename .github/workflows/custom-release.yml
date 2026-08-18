@@ -1,0 +1,67 @@
+name: Build custom VSIX release
+
+on:
+  push:
+    tags:
+      - "v*-hebbio.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build extension
+        run: npm run vscode:prepublish
+
+      - name: Package VSIX with runtime dependencies
+        shell: pwsh
+        run: |
+          $asset = "eide-$env:GITHUB_REF_NAME.vsix"
+          npx --no-install vsce package --out $asset
+          "VSIX_ASSET=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eide-vsix-${{ github.ref_name }}
+          path: ${{ env.VSIX_ASSET }}
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          @'
+          Custom EIDE build based on upstream v3.27.2.
+
+          Changes:
+          - Support workspaces whose root contains the EIDE project directory.
+          - Support recent cpptools versions that call provideConfigurations directly.
+          - Fall back to the first matching project when the active project does not match.
+          - Package all runtime dependencies in the VSIX.
+
+          Build requirements and reproduction steps are documented in CUSTOM_BUILD.md.
+          '@ | Set-Content release-notes.md
+          gh release create $env:GITHUB_REF_NAME $env:VSIX_ASSET `
+            --title "EIDE $env:GITHUB_REF_NAME" `
+            --notes-file release-notes.md `
+            --verify-tag
