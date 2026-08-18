@@ -3452,7 +3452,17 @@ export class ProjectExplorer implements CustomConfigurationProvider {
 
             for (const uri of uris) {
 
-                const prjList = this._sourceWhereFroms.get(uri.fsPath);
+                let prjList = this._sourceWhereFroms.get(uri.fsPath);
+
+                // Newer cpptools versions may call provideConfigurations directly
+                // without calling canProvideConfiguration first. Populate the
+                // source-to-project map on demand so legacy EIDE workspaces still
+                // receive a per-file configuration.
+                if (prjList == undefined || prjList.length == 0) {
+                    await this.canProvideConfiguration(uri, token);
+                    prjList = this._sourceWhereFroms.get(uri.fsPath);
+                }
+
                 if (prjList == undefined || prjList.length == 0) continue;
 
                 let proj: AbstractProject | undefined;
@@ -3461,7 +3471,8 @@ export class ProjectExplorer implements CustomConfigurationProvider {
                     if (pidx != -1) {
                         proj = this.dataProvider.getProjectByUid(prjList[pidx]);
                     }
-                } else {
+                }
+                if (!proj) {
                     proj = this.dataProvider.getProjectByUid(prjList[0]);
                 }
 
