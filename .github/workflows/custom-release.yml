@@ -57,6 +57,7 @@ jobs:
           - Support workspaces whose root contains the EIDE project directory.
           - Support recent cpptools versions that call provideConfigurations directly.
           - Fall back to the first matching project when the active project does not match.
+          - Never overwrite eide.yml after it is modified outside EIDE; ask to reload instead.
           - Package all runtime dependencies in the VSIX.
 
           Build requirements and reproduction steps are documented in CUSTOM_BUILD.md.

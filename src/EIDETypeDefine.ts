@@ -496,14 +496,11 @@ export class ProjectConfiguration<T extends BuilderConfigData>
             resolveEnvVar: (p) => p
         };
 
+        // Compare content instead of mtime, so an external edit made within a few
+        // seconds of our own save is still detected.
         const _cb = () => {
-            try {
-                const meta = fs.statSync(this.cfgFile.path);
-                if (meta.mtime.getTime() > this.lastSaveTime + 3000) {
-                    this.onProjectFileChanged();
-                }
-            } catch (err) {
-                // nothing todo
+            if (this.isChangedOnDisk()) {
+                this.onProjectFileChanged();
             }
         };
 
@@ -1594,11 +1591,52 @@ export class ProjectConfiguration<T extends BuilderConfigData>
         }
     }
 
+    // Content of the project file when it was last loaded or written by us.
+    private syncedContent: string | undefined;
+
+    protected loadConfig(json: string): void {
+        super.loadConfig(json);
+        this.syncedContent = json;
+    }
+
+    /**
+     * True when the project file was modified outside EIDE and has not been
+     * reloaded yet. An unreadable or unparsable file also counts as changed,
+     * so we never overwrite a file that is in the middle of being edited.
+     */
+    private isChangedOnDisk(): boolean {
+        if (this.syncedContent === undefined)
+            return false;
+        try {
+            if (!this.cfgFile.IsExist())
+                return false;
+            return !this.compare(this.syncedContent, this.cfgFile.Read());
+        } catch (err) {
+            return true;
+        }
+    }
+
     Save(force?: boolean) {
         const usrCtx = this.getProjectUsrCtx();
         usrCtx.target = this.config.mode; // save current target
         this.setProjectUsrCtx(usrCtx);
+
+        // The in-memory config is stale. Writing it would discard the external
+        // change, so keep the file and ask the user to reload instead.
+        if (this.isChangedOnDisk()) {
+            GlobalEvent.log_warn(`'${this.cfgFile.path}' was modified outside EIDE, skip saving until the project is reloaded.`);
+            this.onProjectFileChanged();
+            return;
+        }
+
         super.Save();
+
+        try {
+            if (this.cfgFile.IsExist())
+                this.syncedContent = this.cfgFile.Read();
+        } catch (err) {
+            GlobalEvent.log_error(err);
+        }
     }
 }
 
